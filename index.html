@@ -29,6 +29,8 @@
   --ink:#1f3a4d; --quest:#2f7d5b; --gold:#f3a712; --coral:#ef6f5c;
   --sky:#3f86bf; --paper:#fbf7ef; --line:#d8d2c4;
   --quest-soft:#e4f1ea; --gold-soft:#fdf0d6; --coral-soft:#fce4df; --sky-soft:#e2eef7;
+  --grape:#7b5ea7; --berry:#d6457f; --teal:#2aa39a; --sunset:#e8743b;
+  --grape-soft:#ece6f4; --berry-soft:#f8e1ec; --teal-soft:#def3f1; --sunset-soft:#fbe7db;
   --radius:16px; --radius-sm:12px;
   --shadow:0 4px 14px rgba(31,58,77,.10);
   --safe-top:env(safe-area-inset-top,0px);
@@ -57,6 +59,12 @@ button{ font-family:inherit; color:inherit; border:none; background:none; cursor
 input{ font-family:inherit; font-size:16px; } /* >=16px so iOS never zooms on focus */
 .accent-quest{ --accent:var(--quest); --accent-soft:var(--quest-soft); }
 .accent-coral{ --accent:var(--coral); --accent-soft:var(--coral-soft); }
+.accent-sky{ --accent:var(--sky); --accent-soft:var(--sky-soft); }
+.accent-gold{ --accent:var(--gold); --accent-soft:var(--gold-soft); }
+.accent-grape{ --accent:var(--grape); --accent-soft:var(--grape-soft); }
+.accent-berry{ --accent:var(--berry); --accent-soft:var(--berry-soft); }
+.accent-teal{ --accent:var(--teal); --accent-soft:var(--teal-soft); }
+.accent-sunset{ --accent:var(--sunset); --accent-soft:var(--sunset-soft); }
 
 /* ---- app shell ---- */
 #app{
@@ -281,8 +289,46 @@ h2.section{ font-family:var(--display); font-weight:700; font-size:17px; margin:
 .balnum.tick{ animation:tick .4s ease; }
 @keyframes tick{ 0%{ transform:scale(1);} 40%{ transform:scale(1.18);} 100%{ transform:scale(1);} }
 
+/* ---- streak badge ---- */
+.streak{ display:inline-flex; align-items:center; gap:5px; margin-top:8px; font-weight:800; font-size:14px;
+  color:var(--coral); background:var(--coral-soft); padding:5px 12px; border-radius:999px; }
+.streak.zero{ color:#6b7c87; background:#eee9dd; }
+
+/* ---- this week view ---- */
+.week-stats{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:14px; }
+.stat{ background:#fff; border-radius:var(--radius-sm); box-shadow:var(--shadow); padding:12px 8px; text-align:center; }
+.stat .n{ font-family:var(--display); font-weight:800; font-size:24px; color:var(--accent); }
+.stat .l{ font-size:11px; font-weight:700; color:#6b7c87; margin-top:2px; }
+.day-group{ margin-bottom:14px; }
+.day-group .day-h{ font-family:var(--display); font-weight:700; font-size:14px; margin:0 2px 8px; color:var(--ink); }
+.log-row{ display:flex; align-items:center; gap:10px; background:#fff; border-radius:10px; box-shadow:var(--shadow);
+  padding:10px 12px; margin-bottom:7px; }
+.log-row .li{ flex:1; font-weight:700; font-size:14px; }
+.log-row .ld{ font-weight:800; white-space:nowrap; }
+.log-row .ld.pos{ color:var(--quest); } .log-row .ld.neg{ color:var(--coral); }
+.log-row .lt{ font-size:11px; color:#6b7c87; font-weight:600; white-space:nowrap; }
+.empty{ text-align:center; color:#6b7c87; font-weight:700; padding:24px 0; }
+
+/* ---- jar draw animation ---- */
+.jar-card{ text-align:center; }
+.jar-card .draw-emoji{ font-size:64px; display:block; animation:jiggle .6s ease; }
+@keyframes jiggle{ 0%,100%{ transform:rotate(0);} 25%{ transform:rotate(-12deg);} 75%{ transform:rotate(12deg);} }
+
 @media (prefers-reduced-motion: reduce){
   *{ animation-duration:.01ms !important; transition-duration:.01ms !important; }
+}
+
+/* ---- print: show only the weekly summary ---- */
+#printArea{ display:none; }
+@media print{
+  body,html{ position:static; overflow:visible; height:auto; background:#fff; }
+  #app, #toast, #confetti, .overlay{ display:none !important; }
+  #printArea{ display:block; padding:24px; color:#1f3a4d; font-family:var(--body); }
+  #printArea h1{ font-family:var(--display); font-size:26px; margin-bottom:4px; }
+  #printArea h2{ font-family:var(--display); font-size:18px; margin:18px 0 8px; border-bottom:2px solid var(--line); padding-bottom:4px; }
+  #printArea .p-stats{ display:flex; gap:24px; margin:10px 0; font-weight:700; }
+  #printArea .p-row{ display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px dotted var(--line); }
+  #printArea .p-sub{ color:#6b7c87; font-weight:700; }
 }
 </style>
 </head>
@@ -301,6 +347,7 @@ h2.section{ font-family:var(--display); font-weight:700; font-size:17px; margin:
     <section class="screen active" id="screen-home">
       <h2 class="section">✨ Who's questing?</h2>
       <div class="kidcards" id="kidCards"></div>
+      <button class="bigbtn btn-ghost" id="paydayBtn">💵 Pay Day</button>
       <div id="installHint"></div>
     </section>
 
@@ -318,8 +365,32 @@ h2.section{ font-family:var(--display); font-weight:700; font-size:17px; margin:
       <h2 class="section">🎯 Goal</h2>
       <div class="card goalwrap" id="goalCard"></div>
 
-      <button class="bigbtn btn-gold" data-nav="shop">🛍️ Reward Shop</button>
+      <h2 class="section" id="savingsHeader">💰 Savings Goal</h2>
+      <div class="card goalwrap" id="savingsCard"></div>
+
+      <button class="bigbtn btn-coral" id="jarBtn">🎁 Extra Quest Jar</button>
+      <div class="btn-row">
+        <button class="bigbtn btn-gold" data-nav="shop">🛍️ Shop</button>
+        <button class="bigbtn btn-sky" data-nav="week">📅 This Week</button>
+      </div>
       <button class="bigbtn btn-quest" id="cashoutBtn" data-nav="cashout">💰 Cash Out</button>
+    </section>
+
+    <!-- ===== This Week ===== -->
+    <section class="screen" id="screen-week">
+      <button class="backbtn" data-nav="kid">◀ Back</button>
+      <h2 class="section">📈 Progress</h2>
+      <div class="card" id="chartCard"><canvas id="progChart"></canvas></div>
+      <h2 class="section">📅 This Week</h2>
+      <div id="weekBody"></div>
+      <button class="bigbtn btn-ghost" id="printBtn">🖨️ Print weekly summary</button>
+    </section>
+
+    <!-- ===== Pay Day ===== -->
+    <section class="screen" id="screen-payday">
+      <button class="backbtn" data-nav="home">◀ Home</button>
+      <h2 class="section">💵 Pay Day</h2>
+      <div id="paydayBody"></div>
     </section>
 
     <!-- ===== Shop ===== -->
@@ -369,6 +440,9 @@ h2.section{ font-family:var(--display); font-weight:700; font-size:17px; margin:
   </div>
 </div>
 
+<!-- Printable weekly summary (hidden on screen, shown only when printing) -->
+<div id="printArea"></div>
+
 <canvas id="confetti"></canvas>
 
 <script>
@@ -382,18 +456,22 @@ const todayKey=()=>{ const d=new Date(); return d.getFullYear()+"-"+String(d.get
 function seed(){
   return {
     version:1,
-    settings:{ starValueCents:25, payDay:"Sunday", parentPin:"0000", soundOn:true },
+    settings:{ starValueCents:25, payDay:"Sunday", parentPin:"0000", soundOn:true, autoSnapshot:true, lastPayDayTs:null },
     kids:[
-      { id:"nathan", name:"Nathan", level:8, accent:"quest", mode:"saver",
-        stars:0, lifetimeStars:0, goal:{ label:"Saving up!", targetStars:20 },
+      { id:"nathan", name:"Nathan", level:8, accent:"quest", mode:"saver", avatar:"🦖",
+        stars:0, lifetimeStars:0, starValueCents:25,
+        goal:{ label:"5 stars = a prize!", targetStars:5 },
+        savingsGoal:{ label:"Lego set", targetCents:2000 },
         dailyQuests:[
           {id:uid(),label:"Make my bed",emoji:"🛏️"},
           {id:uid(),label:"Clear my plate",emoji:"🍽️"},
           {id:uid(),label:"Pack my stuff for tomorrow",emoji:"🎒"},
           {id:uid(),label:"Brush teeth (AM & PM)",emoji:"🦷"}
         ], doneByDate:{} },
-      { id:"paxton", name:"Paxton", level:5, accent:"coral", mode:"instant",
-        stars:0, lifetimeStars:0, goal:{ label:"5 stars = a prize!", targetStars:5 },
+      { id:"paxton", name:"Paxton", level:5, accent:"coral", mode:"instant", avatar:"🦊",
+        stars:0, lifetimeStars:0, starValueCents:10,
+        goal:{ label:"5 stars = a prize!", targetStars:5 },
+        savingsGoal:{ label:"A new toy", targetCents:200 },
         dailyQuests:[
           {id:uid(),label:"Toys in the bin",emoji:"🧸"},
           {id:uid(),label:"Plate in the sink",emoji:"🍽️"},
@@ -414,17 +492,50 @@ function seed(){
       {id:uid(),label:"Movie night, you pick",cost:10,scope:"all"},
       {id:uid(),label:"Have a friend over",cost:15,scope:"all"}
     ],
+    extraQuestJar:[                // random draws — each gives +2 ⭐
+      "Help set the table 🍽️","Tidy the living room 🛋️","Read to your brother 📚",
+      "Wipe down a counter 🧽","Put away the clean laundry 🧺","Sweep the floor 🧹",
+      "Water the plants 🪴","Help with dinner 🍳","Make someone laugh 😄","Give a big compliment 💬"
+    ],
+    snapshots:[],                  // weekly progress snapshots: {ts, kids:{kidId:lifetimeStars}}
     log:[]
   };
+}
+
+// Fill in fields added in later sessions so existing saved data keeps working
+function migrate(s){
+  if(!s.extraQuestJar||!s.extraQuestJar.length) s.extraQuestJar=seed().extraQuestJar;
+  s.kids.forEach(k=>{
+    if(!k.doneByDate) k.doneByDate={};
+    if(!k.avatar) k.avatar = k.accent==="quest"?"🦖":"🦊";
+    if(k.starValueCents===undefined) k.starValueCents = s.settings.starValueCents;
+    if(!k.savingsGoal) k.savingsGoal = { label:"", targetCents:0 };
+  });
+  if(!Array.isArray(s.log)) s.log=[];
+  if(!Array.isArray(s.snapshots)) s.snapshots=[];
+  if(s.settings.autoSnapshot===undefined) s.settings.autoSnapshot=true;
+  if(s.settings.lastPayDayTs===undefined) s.settings.lastPayDayTs=null;
+  return s;
+}
+
+// Take a progress snapshot at most once per 7 days (durability + chart history)
+function maybeSnapshot(){
+  if(!state.settings.autoSnapshot) return;
+  const last=state.snapshots[state.snapshots.length-1];
+  if(last && Date.now()-last.ts < 7*864e5) return;
+  const kids={}; state.kids.forEach(k=>{ kids[k.id]=k.lifetimeStars; });
+  state.snapshots.push({ts:Date.now(),kids});
+  if(state.snapshots.length>120) state.snapshots.splice(0,state.snapshots.length-120);
+  save();
 }
 
 let state=load();
 function load(){
   try{
     const raw=localStorage.getItem(KEY);
-    if(raw) return JSON.parse(raw);
+    if(raw) return migrate(JSON.parse(raw));
     const bak=localStorage.getItem(BAK);
-    if(bak) return JSON.parse(bak);
+    if(bak) return migrate(JSON.parse(bak));
   }catch(e){ console.warn("load failed",e); }
   return seed();
 }
@@ -437,12 +548,25 @@ function save(){
 }
 const kidById=id=>state.kids.find(k=>k.id===id);
 
+// ---- streak helpers (encouraging only — today-in-progress never breaks it) ----
+function dayKeyOffset(n){ const d=new Date(); d.setDate(d.getDate()-n);
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function dayComplete(k,key){ const done=k.doneByDate[key]||[];
+  return k.dailyQuests.length>0 && k.dailyQuests.every(q=>done.includes(q.id)); }
+function streakOf(k){
+  let n=0, start=dayComplete(k,dayKeyOffset(0))?0:1; // today not done yet: count from yesterday
+  for(let i=start;i<400;i++){ if(dayComplete(k,dayKeyOffset(i))) n++; else break; }
+  return n;
+}
+
 /* ============================================================
    2. NAV / RENDER
    ============================================================ */
 let currentKidId=null;
 const $=s=>document.querySelector(s);
-const screens={ home:"screen-home", kid:"screen-kid", shop:"screen-shop", cashout:"screen-cashout", parent:"screen-parent" };
+const screens={ home:"screen-home", kid:"screen-kid", shop:"screen-shop", cashout:"screen-cashout", parent:"screen-parent", week:"screen-week", payday:"screen-payday" };
+// theme color choices for the per-kid dropdown
+const ACCENTS=[["quest","💚 Green"],["sky","💙 Blue"],["coral","🧡 Coral"],["gold","💛 Gold"],["grape","💜 Purple"],["berry","🩷 Pink"],["teal","🩵 Teal"],["sunset","🔥 Orange"]];
 
 function go(name){
   document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
@@ -454,6 +578,8 @@ function go(name){
   if(name==="shop") renderShop();
   if(name==="cashout") renderCashout();
   if(name==="parent") renderParent();
+  if(name==="week") renderWeek();
+  if(name==="payday") renderPayday();
 }
 
 document.body.addEventListener("click",e=>{
@@ -462,11 +588,16 @@ document.body.addEventListener("click",e=>{
 });
 $("#homeBtn").addEventListener("click",()=>go("home"));
 $("#parentBtn").addEventListener("click",()=>requirePin(()=>go("parent")));
+$("#jarBtn").addEventListener("click",()=>{ if(currentKidId) drawJar(currentKidId); });
+$("#printBtn").addEventListener("click",()=>{ buildPrint(); setTimeout(()=>window.print(),60); });
+$("#paydayBtn").addEventListener("click",()=>requirePin(()=>go("payday")));
 
-function cash(stars){
-  const c=stars*state.settings.starValueCents;
-  return "$"+(c/100).toFixed(2);
-}
+// per-kid star→money conversion (age-appropriate; falls back to the global rate)
+function rateFor(k){ return (k && k.starValueCents!=null) ? k.starValueCents : state.settings.starValueCents; }
+function centsFor(k,stars){ return stars*rateFor(k); }
+function cash(stars,k){ return "$"+(centsFor(k,stars)/100).toFixed(2); }
+function fmt(cents){ return "$"+(cents/100).toFixed(2); }
+function dollarsToCents(v){ return Math.max(0,Math.round((parseFloat(v)||0)*100)); }
 
 /* ---- Home ---- */
 function renderHome(){
@@ -475,7 +606,7 @@ function renderHome(){
     const el=document.createElement("button");
     el.className="kidcard accent-"+k.accent;
     el.innerHTML=`
-      <div class="avatar">${k.accent==="quest"?"🦖":"🦊"}</div>
+      <div class="avatar">${k.avatar||"⭐"}</div>
       <div class="who">
         <div class="name">${esc(k.name)}</div>
         <div class="lvl">Level ${k.level}</div>
@@ -494,10 +625,12 @@ function renderKid(){
   $("#topTitle").textContent=k.name+"'s Quests";
 
   // hero
+  const st=streakOf(k);
   $("#kidHero").innerHTML=`
     <div class="star">⭐</div>
     <div class="balnum" id="balNum">${k.stars}</div>
-    <div class="cash ${k.mode==="saver"?"":"hidden"}">${cash(k.stars)} saved</div>`;
+    <div class="cash">${cash(k.stars,k)} saved</div>
+    <div><span class="streak ${st?"":"zero"}">${st?"🔥":"✨"} ${st?st+"-day streak":"Start a streak today!"}</span></div>`;
 
   // daily quests
   const done=k.doneByDate[todayKey()]||[];
@@ -523,9 +656,30 @@ function renderKid(){
   });
 
   renderGoal(k);
+  renderSavings(k);
 
-  // cash out only for savers
-  $("#cashoutBtn").style.display = k.mode==="saver" ? "flex" : "none";
+  // both kids can convert stars to money now
+  $("#cashoutBtn").style.display = "flex";
+
+  // seed celebration latches to current state so we don't re-fire on an already-met goal
+  lastGoalHit[k.id] = (k.goal.targetStars||0)>0 && k.stars>=k.goal.targetStars;
+  lastSaveHit[k.id] = (k.savingsGoal.targetCents||0)>0 && centsFor(k,k.stars)>=k.savingsGoal.targetCents;
+}
+
+function renderSavings(k){
+  const target=k.savingsGoal&&k.savingsGoal.targetCents||0;
+  const header=$("#savingsHeader"), card=$("#savingsCard");
+  if(target<=0){ header.style.display="none"; card.style.display="none"; return; }
+  header.style.display=""; card.style.display="";
+  const have=centsFor(k,k.stars);
+  const pct=Math.min(100,Math.round(have/target*100));
+  const toGo=Math.max(0,Math.ceil((target-have)/rateFor(k)));
+  const ready=have>=target;
+  card.innerHTML=`
+    <div class="goal-label">🛒 Saving for: ${esc(k.savingsGoal.label||"something special")}</div>
+    <div class="goalbar"><div class="goalfill" style="width:${pct}%"></div></div>
+    <div class="goal-meta"><span>${fmt(have)} of ${fmt(target)}</span><span>${pct}%</span></div>
+    <div class="muted" style="margin-top:8px;font-weight:800">${ready?"🎉 You saved enough — cash out to buy it!":toGo+" more ⭐ to go!"}</div>`;
 }
 
 function renderGoal(k){
@@ -542,7 +696,7 @@ function renderShop(){
   const k=kidById(currentKidId); if(!k) return go("home");
   $("#screen-shop").className="screen active accent-"+k.accent;
   $("#topTitle").textContent="Reward Shop";
-  $("#shopBal").innerHTML=`<div class="balnum">⭐ ${k.stars}</div><div class="cash ${k.mode==="saver"?"":"hidden"}">${cash(k.stars)}</div>`;
+  $("#shopBal").innerHTML=`<div class="balnum">⭐ ${k.stars}</div><div class="cash">${cash(k.stars,k)}</div>`;
   const list=$("#shopList"); list.innerHTML="";
   const items=state.rewards.filter(r=>r.scope==="all"||r.scope===k.id);
   if(!items.length){ list.innerHTML='<p class="muted">No rewards yet — add some in Parent settings.</p>'; return; }
@@ -561,15 +715,18 @@ function renderShop(){
 
 /* ---- Cash out ---- */
 function renderCashout(){
-  const k=kidById(currentKidId); if(!k||k.mode!=="saver") return go("kid");
+  const k=kidById(currentKidId); if(!k) return go("home");
+  $("#screen-cashout").className="screen active accent-"+k.accent;
   $("#topTitle").textContent="Cash Out";
+  const sg=(k.savingsGoal&&k.savingsGoal.targetCents>0)?k.savingsGoal:null;
   const body=$("#cashoutBody");
   body.innerHTML=`
-    <div class="hero accent-quest" style="--accent:var(--quest);--accent-soft:var(--quest-soft)">
+    <div class="hero">
       <div class="star">💰</div>
-      <div class="balnum" style="color:var(--quest)">${cash(k.stars)}</div>
-      <div class="muted" style="margin-top:6px">${k.stars} ⭐ × ${(state.settings.starValueCents/100).toFixed(2)} each</div>
+      <div class="balnum" style="color:var(--accent)">${cash(k.stars,k)}</div>
+      <div class="muted" style="margin-top:6px">${k.stars} ⭐ × ${(rateFor(k)/100).toFixed(2)} each</div>
     </div>
+    ${sg?`<div class="card" style="margin-top:12px"><b>🛒 Saving for: ${esc(sg.label)}</b> — ${fmt(sg.targetCents)}<br><span class="muted">${centsFor(k,k.stars)>=sg.targetCents?"You have enough — cash out to buy it! 🎉":"Keep saving — "+fmt(sg.targetCents-centsFor(k,k.stars))+" to go."}</span></div>`:""}
     <p class="muted" style="margin:14px 2px">Cashing out turns stars into money owed on <b>${esc(state.settings.payDay)}</b>. Choose how many stars to cash out.</p>
     <div class="field"><label>Stars to cash out</label><input id="cashCount" type="number" min="1" max="${k.stars}" value="${k.stars}" inputmode="numeric"></div>
     <button class="bigbtn btn-quest" id="doCashout" ${k.stars<1?"disabled style=opacity:.5":""}>💵 Cash Out</button>`;
@@ -581,6 +738,173 @@ function renderCashout(){
       requirePin(()=>cashout(k.id,n));
     });
   }
+}
+
+/* ---- This Week (activity + stats) ---- */
+const DAYNAMES=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+function weekEvents(kidId){
+  const cutoff=Date.now()-7*864e5;
+  return state.log.filter(e=>e.kidId===kidId && e.ts>=cutoff);
+}
+function renderWeek(){
+  const k=kidById(currentKidId); if(!k) return go("home");
+  $("#screen-week").className="screen active accent-"+k.accent;
+  $("#topTitle").textContent=k.name+"'s Week";
+  const evs=weekEvents(k.id);
+  const earned=evs.filter(e=>e.type==="earn").reduce((s,e)=>s+e.delta,0);
+  const spent=evs.filter(e=>e.type==="redeem"||e.type==="cashout").reduce((s,e)=>s-e.delta,0);
+  let daysActive=0; for(let i=0;i<7;i++){ if(dayComplete(k,dayKeyOffset(i))) daysActive++; }
+
+  let html=`<div class="hero" id="weekHero" style="margin-bottom:14px">
+      <div class="streak ${streakOf(k)?"":"zero"}">${streakOf(k)?"🔥":"✨"} ${streakOf(k)?streakOf(k)+"-day streak":"No streak yet"}</div>
+    </div>
+    <div class="week-stats">
+      <div class="stat"><div class="n">${earned}</div><div class="l">⭐ earned</div></div>
+      <div class="stat"><div class="n">${spent}</div><div class="l">⭐ spent</div></div>
+      <div class="stat"><div class="n">${daysActive}/7</div><div class="l">all-done days</div></div>
+    </div>`;
+
+  // group events by day
+  const groups={};
+  evs.forEach(e=>{ const d=new Date(e.ts); const key=d.getFullYear()+"-"+(d.getMonth()+1)+"-"+d.getDate();
+    (groups[key]=groups[key]||{ts:e.ts,items:[]}).items.push(e); });
+  const keys=Object.keys(groups).sort((a,b)=>groups[b].ts-groups[a].ts);
+  if(!keys.length){ html+=`<div class="empty">No activity yet this week.<br>Earn some ⭐ to fill this in! 🌟</div>`; }
+  keys.forEach(key=>{
+    const g=groups[key]; const d=new Date(g.ts);
+    const label = key===keysToday() ? "Today" : DAYNAMES[d.getDay()]+", "+(d.getMonth()+1)+"/"+d.getDate();
+    html+=`<div class="day-group"><div class="day-h">${label}</div>`;
+    g.items.forEach(e=>{
+      const t=new Date(e.ts), hh=((t.getHours()+11)%12+1), ap=t.getHours()<12?"am":"pm";
+      const time=hh+":"+String(t.getMinutes()).padStart(2,"0")+ap;
+      const sign=e.delta>0?"+":"";
+      html+=`<div class="log-row"><div class="li">${eventIcon(e)} ${esc(e.label)}</div>
+        <div class="ld ${e.delta>=0?"pos":"neg"}">${sign}${e.delta} ⭐</div>
+        <div class="lt">${time}</div></div>`;
+    });
+    html+=`</div>`;
+  });
+  $("#weekBody").innerHTML=html;
+  drawProgressChart(k);
+}
+function keysToday(){ const d=new Date(); return d.getFullYear()+"-"+(d.getMonth()+1)+"-"+d.getDate(); }
+
+/* ---- progress chart (lifetime stars over time) ---- */
+function progressSeries(kid){
+  const pts=[];
+  (state.snapshots||[]).forEach(s=>{ if(s.kids && s.kids[kid.id]!=null) pts.push({ts:s.ts,v:s.kids[kid.id]}); });
+  const earns=state.log.filter(e=>e.kidId===kid.id && e.type==="earn").slice().sort((a,b)=>a.ts-b.ts);
+  if(earns.length){
+    const byDay={};
+    earns.forEach(e=>{ const d=new Date(e.ts); const key=new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime(); byDay[key]=(byDay[key]||0)+e.delta; });
+    // baseline before the oldest logged earn (covers log truncation)
+    let cum=kid.lifetimeStars - earns.reduce((s,e)=>s+e.delta,0);
+    Object.keys(byDay).map(Number).sort((a,b)=>a-b).forEach(day=>{ cum+=byDay[day]; pts.push({ts:day+86399999,v:cum}); });
+  }
+  pts.push({ts:Date.now(),v:kid.lifetimeStars});
+  pts.sort((a,b)=>a.ts-b.ts);
+  // dedupe near-equal timestamps, keep last
+  const out=[]; pts.forEach(p=>{ const l=out[out.length-1]; if(l && Math.abs(l.ts-p.ts)<3600e3) out[out.length-1]=p; else out.push(p); });
+  return out;
+}
+function drawProgressChart(kid){
+  const cv=$("#progChart"); if(!cv) return;
+  const accent=getComputedStyle($("#screen-week")).getPropertyValue("--accent").trim()||"#2f7d5b";
+  const pts=progressSeries(kid);
+  const dpr=Math.min(devicePixelRatio||1,2);
+  const cssW=cv.parentElement.clientWidth-28, cssH=150;
+  cv.style.width=cssW+"px"; cv.style.height=cssH+"px";
+  cv.width=cssW*dpr; cv.height=cssH*dpr;
+  const x=cv.getContext("2d"); x.scale(dpr,dpr);
+  x.clearRect(0,0,cssW,cssH);
+  const pad={l:8,r:8,t:18,b:8};
+  if(pts.length<2){
+    x.fillStyle="#6b7c87"; x.font="600 13px Nunito, sans-serif"; x.textAlign="center";
+    x.fillText("Keep questing — your progress chart fills in over time ✨",cssW/2,cssH/2);
+    // single dot for current total
+    if(pts.length===1){ x.fillStyle=accent; x.beginPath(); x.arc(cssW/2,cssH/2+22,5,0,7); x.fill(); }
+    return;
+  }
+  const t0=pts[0].ts, t1=pts[pts.length-1].ts, dt=Math.max(1,t1-t0);
+  const vmax=Math.max(1,...pts.map(p=>p.v));
+  const px=p=>pad.l+(p.ts-t0)/dt*(cssW-pad.l-pad.r);
+  const py=p=>pad.t+(1-p.v/vmax)*(cssH-pad.t-pad.b);
+  // area fill
+  x.beginPath(); x.moveTo(px(pts[0]),cssH-pad.b);
+  pts.forEach(p=>x.lineTo(px(p),py(p)));
+  x.lineTo(px(pts[pts.length-1]),cssH-pad.b); x.closePath();
+  x.fillStyle=accent+"22"; x.fill();
+  // line
+  x.beginPath(); pts.forEach((p,i)=>{ const X=px(p),Y=py(p); i?x.lineTo(X,Y):x.moveTo(X,Y); });
+  x.strokeStyle=accent; x.lineWidth=3; x.lineJoin="round"; x.stroke();
+  // last point + label
+  const last=pts[pts.length-1];
+  x.fillStyle=accent; x.beginPath(); x.arc(px(last),py(last),5,0,7); x.fill();
+  x.fillStyle="#1f3a4d"; x.font="800 13px 'Baloo 2', sans-serif"; x.textAlign="right";
+  x.fillText("⭐ "+last.v+" lifetime",cssW-pad.r,13);
+}
+
+/* ---- Pay Day ---- */
+function cashoutsSince(k,sinceTs){
+  const evs=state.log.filter(e=>e.kidId===k.id && e.type==="cashout" && (!sinceTs || e.ts>sinceTs));
+  const stars=evs.reduce((s,e)=>s-e.delta,0); // delta is negative stars → positive count
+  const cents=evs.reduce((s,e)=>s+(e.cents!=null?e.cents:(-e.delta)*rateFor(k)),0);
+  return {stars,cents};
+}
+function renderPayday(){
+  $("#topTitle").textContent="Pay Day";
+  const since=state.settings.lastPayDayTs;
+  let totalCents=0, html="", any=false;
+  html+=`<p class="muted" style="margin:2px 2px 14px">Cash-outs since ${since?new Date(since).toLocaleDateString():"the beginning"}. Settle up, then mark paid.</p>`;
+  state.kids.forEach(k=>{
+    const {stars,cents}=cashoutsSince(k,since);
+    if(stars<=0) return; any=true;
+    totalCents+=cents;
+    html+=`<div class="shop-item accent-${k.accent}"><div class="label">${k.avatar||"⭐"} ${esc(k.name)}</div>
+      <div class="cost">${stars} ⭐ · ${fmt(cents)}</div></div>`;
+  });
+  if(!any) html+=`<div class="empty">No cash-outs to settle yet.</div>`;
+  html+=`<div class="hero accent-quest" style="--accent:var(--quest);--accent-soft:var(--quest-soft);margin-top:8px">
+      <div class="muted" style="font-weight:800">Total to pay out</div>
+      <div class="balnum" style="color:var(--quest)">$${(totalCents/100).toFixed(2)}</div></div>`;
+  html+=`<button class="bigbtn btn-quest" id="settleBtn" ${totalCents<=0?"disabled style=opacity:.5":""}>✅ Mark as paid</button>`;
+  $("#paydayBody").innerHTML=html;
+  if(totalCents>0){
+    $("#settleBtn").addEventListener("click",()=>{
+      showMessage("Mark as paid?", `Record $${(totalCents/100).toFixed(2)} as settled and start a new pay period from now.`, [
+        {label:"Yes, paid 💵",cls:"btn-quest",fn:()=>{
+          state.settings.lastPayDayTs=Date.now();
+          logEvent({type:"payday",kidId:"all",label:"Pay day settled ($"+(totalCents/100).toFixed(2)+")",delta:0});
+          save(); closeMsg(); renderPayday(); confettiBurst(); unlockAudio(); playFanfare();
+          toastQuick("Pay day settled!");
+        }},
+        {label:"Cancel",cls:"btn-ghost",fn:closeMsg}
+      ]);
+    });
+  }
+}
+function eventIcon(e){ return e.type==="earn"?"⭐":e.type==="redeem"?"🛍️":e.type==="cashout"?"💵":e.type==="payday"?"🧾":"↩️"; }
+
+/* ---- Printable weekly summary ---- */
+function buildPrint(){
+  const k=kidById(currentKidId); if(!k) return;
+  const evs=weekEvents(k.id);
+  const earned=evs.filter(e=>e.type==="earn").reduce((s,e)=>s+e.delta,0);
+  const spent=evs.filter(e=>e.type==="redeem"||e.type==="cashout").reduce((s,e)=>s-e.delta,0);
+  let daysActive=0; for(let i=0;i<7;i++){ if(dayComplete(k,dayKeyOffset(i))) daysActive++; }
+  let rows=evs.slice().sort((a,b)=>b.ts-a.ts).map(e=>{
+    const d=new Date(e.ts);
+    return `<div class="p-row"><span>${eventIcon(e)} ${esc(e.label)} <span class="p-sub">(${DAYNAMES[d.getDay()].slice(0,3)} ${d.getMonth()+1}/${d.getDate()})</span></span><span>${e.delta>0?"+":""}${e.delta} ⭐</span></div>`;
+  }).join("");
+  if(!rows) rows=`<div class="p-row"><span>No activity logged this week.</span></div>`;
+  $("#printArea").innerHTML=`
+    <h1>⭐ ${esc(k.name)}'s Quest Week</h1>
+    <div class="p-sub">Week ending ${new Date().toLocaleDateString()}</div>
+    <div class="p-stats"><span>🔥 ${streakOf(k)}-day streak</span><span>⭐ ${earned} earned</span><span>🛍️ ${spent} spent</span><span>✅ ${daysActive}/7 all-done days</span></div>
+    <h2>Activity</h2>${rows}
+    <h2>Savings</h2>
+    <div class="p-row"><span>Current balance</span><span>${k.stars} ⭐ = ${cash(k.stars,k)}</span></div>
+    ${k.savingsGoal&&k.savingsGoal.targetCents>0?`<div class="p-row"><span>🛒 Saving for ${esc(k.savingsGoal.label)}</span><span>${fmt(centsFor(k,k.stars))} of ${fmt(k.savingsGoal.targetCents)}</span></div>`:""}`;
 }
 
 /* ============================================================
@@ -607,13 +931,35 @@ function earnBonus(kidId,b,ev){
   if(ev) starPop(ev.clientX, ev.clientY, b.stars);
   unlockAudio(); playPing();
   tickBalance();
-  renderGoal(k);
+  renderGoal(k); renderSavings(k);
   $("#balNum") && ($("#balNum").textContent=k.stars);
-  $("#dailyProgress"); // no-op
   setUndo(()=>{ k.stars-=b.stars; k.lifetimeStars-=b.stars; popLog(); save(); renderKid(); }, `+${b.stars} ⭐ for "${b.label}"`);
-  // goal celebration
-  checkGoal(k);
+  // celebrations
+  checkGoal(k); checkSavings(k);
   renderHomeBadge();
+}
+
+function drawJar(kidId){
+  const k=kidById(kidId);
+  const jar=state.extraQuestJar; if(!jar||!jar.length) return;
+  const pick=jar[Math.floor(Math.random()*jar.length)];
+  unlockAudio(); playPing();
+  showMessage("🎁 Extra Quest!", `<div class="jar-card"><span class="draw-emoji">🎁</span><b style="font-size:18px">${esc(pick)}</b><br><span class="muted">Do it to earn +2 ⭐</span></div>`, [
+    {label:"Done — give +2 ⭐",cls:"btn-coral",fn:()=>{
+      closeMsg();
+      k.stars+=2; k.lifetimeStars+=2;
+      logEvent({type:"earn",kidId,label:"Extra Quest: "+pick,delta:2});
+      save();
+      const r=$("#kidHero").getBoundingClientRect();
+      starPop(r.left+r.width/2, r.top+40, 2);
+      playFanfare(); confettiBurst();
+      if($("#balNum")) $("#balNum").textContent=k.stars;
+      tickBalance(); renderGoal(k); renderSavings(k);
+      setUndo(()=>{ k.stars-=2; k.lifetimeStars-=2; popLog(); save(); renderKid(); }, `+2 ⭐ Extra Quest`);
+      checkGoal(k); checkSavings(k); renderHomeBadge();
+    }},
+    {label:"Maybe later",cls:"btn-ghost",fn:closeMsg}
+  ]);
 }
 
 function redeem(kidId,r){
@@ -625,32 +971,59 @@ function redeem(kidId,r){
     save(); renderShop(); renderHomeBadge();
     setUndo(()=>{ k.stars+=r.cost; popLog(); save(); renderShop(); }, `Redeemed "${r.label}"`);
     showMessage("Enjoy! 🎉", `"${r.label}" redeemed for ${r.cost} ⭐.`, [{label:"Yay!",cls:"btn-quest",fn:closeMsg}]);
-    confettiBurst();
+    unlockAudio(); playFanfare(); confettiBurst();
   });
 }
 
 function cashout(kidId,n){
   const k=kidById(kidId);
   n=Math.min(n,k.stars); if(n<1) return;
-  const amount=cash(n);
+  const amount=cash(n,k);
   k.stars-=n;
-  logEvent({type:"cashout",kidId,label:`Cashed out ${n} ⭐`,delta:-n});
+  logEvent({type:"cashout",kidId,label:`Cashed out ${n} ⭐`,delta:-n,cents:centsFor(k,n)});
   save(); renderCashout(); renderHomeBadge();
   setUndo(()=>{ k.stars+=n; popLog(); save(); renderCashout(); }, `Cashed out ${amount}`);
   showMessage("Cashed out! 💵", `${n} ⭐ → <b>${amount}</b> owed on ${esc(state.settings.payDay)}.`, [{label:"Done",cls:"btn-quest",fn:closeMsg}]);
   confettiBurst();
 }
 
+let lastGoalHit={};
 function checkGoal(k){
   const t=k.goal.targetStars||0;
   if(t>0 && k.stars>=t){
+    // only fire the big celebration on the transition into "goal met", not every tap after
+    if(lastGoalHit[k.id]) return;
+    lastGoalHit[k.id]=true;
+    unlockAudio(); playFanfare();
     confettiBurst();
+    setTimeout(confettiBurst,250);
+    setTimeout(confettiBurst,500);   // richer multi-burst level-up
     if(k.mode==="instant"){
       celebrate("🎉 Goal reached!");
       setTimeout(()=>showMessage("Pick your prize! 🎁", `${esc(k.name)} hit the goal: ${esc(k.goal.label)}`, [{label:"Awesome!",cls:"btn-coral",fn:closeMsg}]),600);
     } else {
       celebrate("🎉 "+esc(k.name)+" hit the goal!");
     }
+  } else if(t>0 && k.stars<t){
+    lastGoalHit[k.id]=false; // reset so it can celebrate again next time
+  }
+}
+
+// celebrate when a kid has saved enough money for their wanted item
+let lastSaveHit={};
+function checkSavings(k){
+  const target=k.savingsGoal&&k.savingsGoal.targetCents||0;
+  const have=centsFor(k,k.stars);
+  if(target>0 && have>=target){
+    if(lastSaveHit[k.id]) return;
+    lastSaveHit[k.id]=true;
+    unlockAudio(); playFanfare(); confettiBurst(); setTimeout(confettiBurst,300);
+    celebrate("🛒 Enough for "+esc(k.savingsGoal.label||"your goal")+"!");
+    setTimeout(()=>showMessage("Savings goal reached! 🎉",
+      `${esc(k.name)} saved ${fmt(have)} for <b>${esc(k.savingsGoal.label||"their goal")}</b>. Head to Cash Out to buy it!`,
+      [{label:"Awesome!",cls:"btn-quest",fn:closeMsg}]),700);
+  } else if(target>0 && have<target){
+    lastSaveHit[k.id]=false;
   }
 }
 
@@ -749,6 +1122,22 @@ function playPing(){
     o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime+0.26);
   }catch(e){}
 }
+// rising arpeggio for goals / extra-quest / level-up moments
+function playFanfare(){
+  if(!state.settings.soundOn||!audioCtx) return;
+  try{
+    const notes=[523,659,784,1047]; // C E G C
+    notes.forEach((f,i)=>{
+      const t=audioCtx.currentTime+i*0.10;
+      const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+      o.type="triangle"; o.frequency.setValueAtTime(f,t);
+      g.gain.setValueAtTime(0.0001,t);
+      g.gain.exponentialRampToValueAtTime(0.20,t+0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001,t+0.30);
+      o.connect(g); g.connect(audioCtx.destination); o.start(t); o.stop(t+0.32);
+    });
+  }catch(e){}
+}
 document.body.addEventListener("touchstart",unlockAudio,{once:false,passive:true});
 
 /* ============================================================
@@ -824,13 +1213,16 @@ function renderParent(){
   // --- Kids ---
   state.kids.forEach(k=>{
     const g=document.createElement("div"); g.className="parent-group";
-    g.innerHTML=`<h4>${k.accent==="quest"?"🦖":"🦊"} ${esc(k.name)}</h4>`;
+    g.innerHTML=`<h4>${k.avatar||"⭐"} ${esc(k.name)}</h4>`;
     g.appendChild(field("Name",inputEl("text",k.name,v=>{k.name=v;})));
+    g.appendChild(field("Avatar emoji",inputEl("text",k.avatar,v=>{k.avatar=v||"⭐";},true)));
     g.appendChild(field("Level",inputEl("number",k.level,v=>{k.level=parseInt(v||"0",10)||0;})));
-    g.appendChild(field("Accent color",selectEl([["quest","Green (quest)"],["coral","Coral"]],k.accent,v=>{k.accent=v;})));
-    g.appendChild(field("Mode",selectEl([["saver","Saver (shows money)"],["instant","Instant (hides money)"]],k.mode,v=>{k.mode=v;})));
-    g.appendChild(field("Goal label",inputEl("text",k.goal.label,v=>{k.goal.label=v;})));
-    g.appendChild(field("Goal target ⭐",inputEl("number",k.goal.targetStars,v=>{k.goal.targetStars=parseInt(v||"0",10)||0;})));
+    g.appendChild(field("Theme color",selectEl(ACCENTS,k.accent,v=>{k.accent=v; renderParent();})));
+    g.appendChild(field("Star value (cents each)",inputEl("number",k.starValueCents,v=>{k.starValueCents=parseInt(v||"0",10)||0;})));
+    g.appendChild(field("Star goal label",inputEl("text",k.goal.label,v=>{k.goal.label=v;})));
+    g.appendChild(field("Star goal target ⭐",inputEl("number",k.goal.targetStars,v=>{k.goal.targetStars=parseInt(v||"0",10)||0;})));
+    g.appendChild(field("💰 Saving for (item)",inputEl("text",k.savingsGoal.label,v=>{k.savingsGoal.label=v;})));
+    g.appendChild(field("💰 Item price ($)",inputEl("text",(k.savingsGoal.targetCents/100).toFixed(2),v=>{k.savingsGoal.targetCents=dollarsToCents(v);})));
     // daily quests editor
     const dh=document.createElement("div"); dh.innerHTML=`<label style="font-weight:800;font-size:13px;display:block;margin:6px 0">Daily quests</label>`;
     g.appendChild(dh);
@@ -855,13 +1247,24 @@ function renderParent(){
   rg.appendChild(addBtn("+ Add reward",()=>{ state.rewards.push({id:uid(),label:"New reward",cost:3,scope:"all"}); save(); renderParent(); }));
   b.appendChild(rg);
 
+  // --- Extra Quest jar ---
+  const jg=document.createElement("div"); jg.className="parent-group";
+  jg.innerHTML="<h4>🎁 Extra Quest jar</h4><p class='muted tiny' style='margin-bottom:8px'>One idea per line. The jar draw picks one at random for +2 ⭐.</p>";
+  const jta=document.createElement("textarea");
+  jta.style.cssText="width:100%;min-height:120px;border:2px solid var(--line);border-radius:12px;padding:10px;-webkit-user-select:text;user-select:text;font-weight:600";
+  jta.value=state.extraQuestJar.join("\n");
+  jta.addEventListener("input",()=>{ state.extraQuestJar=jta.value.split("\n").map(s=>s.trim()).filter(Boolean); save(); });
+  jg.appendChild(jta);
+  b.appendChild(jg);
+
   // --- Settings ---
   const sg=document.createElement("div"); sg.className="parent-group";
   sg.innerHTML="<h4>⚙️ Settings</h4>";
-  sg.appendChild(field("Star value (cents) for cash-out",inputEl("number",state.settings.starValueCents,v=>{state.settings.starValueCents=parseInt(v||"0",10)||0;})));
+  sg.appendChild(field("Default star value (cents) — used if a kid has none set",inputEl("number",state.settings.starValueCents,v=>{state.settings.starValueCents=parseInt(v||"0",10)||0;})));
   sg.appendChild(field("Pay day",selectEl([["Sunday","Sunday"],["Monday","Monday"],["Tuesday","Tuesday"],["Wednesday","Wednesday"],["Thursday","Thursday"],["Friday","Friday"],["Saturday","Saturday"]],state.settings.payDay,v=>{state.settings.payDay=v;})));
   sg.appendChild(field("Parent PIN (4 digits)",inputEl("tel",state.settings.parentPin,v=>{state.settings.parentPin=(v||"").replace(/\D/g,"").slice(0,4)||"0000";})));
   sg.appendChild(field("Sound",selectEl([["on","On"],["off","Off"]],state.settings.soundOn?"on":"off",v=>{state.settings.soundOn=(v==="on");})));
+  sg.appendChild(field("Weekly progress snapshots",selectEl([["on","On"],["off","Off"]],state.settings.autoSnapshot?"on":"off",v=>{state.settings.autoSnapshot=(v==="on");})));
   b.appendChild(sg);
 
   // --- Backup & restore ---
@@ -1015,6 +1418,7 @@ setInterval(()=>{ if(todayKey()!==bootDay){ bootDay=todayKey(); if($("#screen-ki
 function boot(){
   buildKeypad();
   makeIcon();
+  maybeSnapshot();
   renderHome();
   maybeShowInstallHint();
 }
