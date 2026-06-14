@@ -919,6 +919,16 @@ function toggleDaily(kidId,questId){
   const i=arr.indexOf(questId);
   if(i>=0) arr.splice(i,1); else arr.push(questId);
   if(!arr.length) delete k.doneByDate[day];
+
+  // Perfect-day bonus: +1 ⭐ the first time every daily quest is done today
+  if(!k.perfectByDate) k.perfectByDate={};
+  if(dayComplete(k,day) && !k.perfectByDate[day]){
+    k.perfectByDate[day]=true;
+    k.stars+=1; k.lifetimeStars+=1;
+    logEvent({type:"earn",kidId,label:"Perfect day! All quests done",delta:1});
+    unlockAudio(); playFanfare(); confettiBurst();
+  }
+
   save(); renderKid();
 }
 
