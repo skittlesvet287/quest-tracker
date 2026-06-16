@@ -451,7 +451,8 @@ h2.section{ font-family:var(--display); font-weight:700; font-size:17px; margin:
    ============================================================ */
 const KEY="questTracker.v1", BAK="questTracker.v1.bak";
 const uid=()=>Math.random().toString(36).slice(2,9);
-const todayKey=()=>{ const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
+const dateKey=(d=new Date())=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+const todayKey=()=>dateKey();
 
 function seed(){
   return {
@@ -467,7 +468,7 @@ function seed(){
           {id:uid(),label:"Clear my plate",emoji:"🍽️"},
           {id:uid(),label:"Pack my stuff for tomorrow",emoji:"🎒"},
           {id:uid(),label:"Brush teeth (AM & PM)",emoji:"🦷"}
-        ], doneByDate:{} },
+        ], doneByDate:{}, perfectByDate:{} },
       { id:"paxton", name:"Paxton", level:5, accent:"coral", mode:"instant", avatar:"🦊",
         stars:0, lifetimeStars:0, starValueCents:10,
         goal:{ label:"5 stars = a prize!", targetStars:5 },
@@ -477,7 +478,7 @@ function seed(){
           {id:uid(),label:"Plate in the sink",emoji:"🍽️"},
           {id:uid(),label:"Get dressed",emoji:"👕"},
           {id:uid(),label:"Brush my teeth",emoji:"🦷"}
-        ], doneByDate:{} }
+        ], doneByDate:{}, perfectByDate:{} }
     ],
     bonusQuests:[
       {id:uid(),label:"Listened the first time",emoji:"👂",stars:1},
@@ -507,9 +508,19 @@ function migrate(s){
   if(!s.extraQuestJar||!s.extraQuestJar.length) s.extraQuestJar=seed().extraQuestJar;
   s.kids.forEach(k=>{
     if(!k.doneByDate) k.doneByDate={};
+    if(!k.perfectByDate) k.perfectByDate={};
     if(!k.avatar) k.avatar = k.accent==="quest"?"🦖":"🦊";
     if(k.starValueCents===undefined) k.starValueCents = s.settings.starValueCents;
     if(!k.savingsGoal) k.savingsGoal = { label:"", targetCents:0 };
+    // Upgrade doneByDate from bare arrays to {required, done} objects.
+    // For legacy entries, done array doubles as required (best-effort;
+    // the original required set is unknown for historical data).
+    Object.keys(k.doneByDate).forEach(day=>{
+      if(Array.isArray(k.doneByDate[day])){
+        const arr=k.doneByDate[day];
+        k.doneByDate[day]={required:arr,done:arr.slice()};
+      }
+    });
   });
   if(!Array.isArray(s.log)) s.log=[];
   if(!Array.isArray(s.snapshots)) s.snapshots=[];
@@ -549,10 +560,13 @@ function save(){
 const kidById=id=>state.kids.find(k=>k.id===id);
 
 // ---- streak helpers (encouraging only — today-in-progress never breaks it) ----
-function dayKeyOffset(n){ const d=new Date(); d.setDate(d.getDate()-n);
-  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
-function dayComplete(k,key){ const done=k.doneByDate[key]||[];
-  return k.dailyQuests.length>0 && k.dailyQuests.every(q=>done.includes(q.id)); }
+function dayKeyOffset(n){ const d=new Date(); d.setDate(d.getDate()-n); return dateKey(d); }
+function dayComplete(k,key){
+  const v=k.doneByDate[key]; if(!v) return false;
+  const required=Array.isArray(v)?v:v.required;
+  const done=Array.isArray(v)?v:v.done;
+  return required.length>0 && required.every(id=>done.includes(id));
+}
 function streakOf(k){
   let n=0, start=dayComplete(k,dayKeyOffset(0))?0:1; // today not done yet: count from yesterday
   for(let i=start;i<400;i++){ if(dayComplete(k,dayKeyOffset(i))) n++; else break; }
@@ -633,14 +647,19 @@ function renderKid(){
     <div><span class="streak ${st?"":"zero"}">${st?"🔥":"✨"} ${st?st+"-day streak":"Start a streak today!"}</span></div>`;
 
   // daily quests
-  const done=k.doneByDate[todayKey()]||[];
+  const todayEntry=k.doneByDate[todayKey()];
+  const done=todayEntry?todayEntry.done:[];
   const dl=$("#dailyList"); dl.innerHTML="";
   k.dailyQuests.forEach(q=>{
     const isDone=done.includes(q.id);
     const row=document.createElement("div");
     row.className="quest-row"+(isDone?" done":"");
+    row.setAttribute("role","checkbox");
+    row.setAttribute("tabindex","0");
+    row.setAttribute("aria-checked",isDone?"true":"false");
     row.innerHTML=`<div class="emoji">${q.emoji||"✅"}</div><div class="label">${esc(q.label)}</div><div class="checkbox">${isDone?"✓":""}</div>`;
     row.addEventListener("click",()=>toggleDaily(k.id,q.id));
+    row.addEventListener("keydown",e=>{ if(e.key==="Enter"||e.key===" "){ if(e.key===" ") e.preventDefault(); toggleDaily(k.id,q.id); } });
     dl.appendChild(row);
   });
   $("#dailyProgress").textContent=`${done.length} of ${k.dailyQuests.length} done`;
@@ -766,13 +785,13 @@ function renderWeek(){
 
   // group events by day
   const groups={};
-  evs.forEach(e=>{ const d=new Date(e.ts); const key=d.getFullYear()+"-"+(d.getMonth()+1)+"-"+d.getDate();
+  evs.forEach(e=>{ const d=new Date(e.ts); const key=dateKey(d);
     (groups[key]=groups[key]||{ts:e.ts,items:[]}).items.push(e); });
   const keys=Object.keys(groups).sort((a,b)=>groups[b].ts-groups[a].ts);
   if(!keys.length){ html+=`<div class="empty">No activity yet this week.<br>Earn some ⭐ to fill this in! 🌟</div>`; }
   keys.forEach(key=>{
     const g=groups[key]; const d=new Date(g.ts);
-    const label = key===keysToday() ? "Today" : DAYNAMES[d.getDay()]+", "+(d.getMonth()+1)+"/"+d.getDate();
+    const label = key===dateKey() ? "Today" : DAYNAMES[d.getDay()]+", "+(d.getMonth()+1)+"/"+d.getDate();
     html+=`<div class="day-group"><div class="day-h">${label}</div>`;
     g.items.forEach(e=>{
       const t=new Date(e.ts), hh=((t.getHours()+11)%12+1), ap=t.getHours()<12?"am":"pm";
@@ -787,7 +806,6 @@ function renderWeek(){
   $("#weekBody").innerHTML=html;
   drawProgressChart(k);
 }
-function keysToday(){ const d=new Date(); return d.getFullYear()+"-"+(d.getMonth()+1)+"-"+d.getDate(); }
 
 /* ---- progress chart (lifetime stars over time) ---- */
 function progressSeries(kid){
@@ -912,21 +930,43 @@ function buildPrint(){
    ============================================================ */
 let lastAction=null; // for undo
 
+/* ---- awardStars: shared earn path used by bonus, jar, and perfect-day ---- */
+function awardStars(k,n,label,ev,opts){
+  opts=Object.assign({undo:true,fanfare:false},opts);
+  const kidId=k.id;
+  k.stars+=n; k.lifetimeStars+=n;
+  const entry=logEvent({type:"earn",kidId,label,delta:n});
+  save();
+  if(ev) starPop(ev.clientX,ev.clientY,n);
+  unlockAudio();
+  opts.fanfare?(playFanfare(),confettiBurst()):playPing();
+  tickBalance();
+  if($("#balNum")) $("#balNum").textContent=k.stars;
+  renderGoal(k); renderSavings(k);
+  if(opts.undo) setUndo(()=>{ k.stars-=n; k.lifetimeStars-=n; removeLog(entry); save(); renderKid(); },`+${n} ⭐ for "${label}"`);
+  checkGoal(k); checkSavings(k);
+  renderHomeBadge();
+}
+
 function toggleDaily(kidId,questId){
   const k=kidById(kidId); const day=todayKey();
-  if(!k.doneByDate[day]) k.doneByDate[day]=[];
-  const arr=k.doneByDate[day];
-  const i=arr.indexOf(questId);
-  if(i>=0) arr.splice(i,1); else arr.push(questId);
-  if(!arr.length) delete k.doneByDate[day];
-
-  // Perfect-day bonus: +1 ⭐ the first time every daily quest is done today
   if(!k.perfectByDate) k.perfectByDate={};
-  if(dayComplete(k,day) && !k.perfectByDate[day]){
+  // Snapshot today's required set on first check so historical integrity is preserved
+  if(!k.doneByDate[day]) k.doneByDate[day]={required:k.dailyQuests.map(q=>q.id),done:[]};
+  const entry=k.doneByDate[day];
+  const i=entry.done.indexOf(questId);
+  if(i>=0) entry.done.splice(i,1); else entry.done.push(questId);
+
+  const complete=dayComplete(k,day);
+  if(complete && !k.perfectByDate[day]){
     k.perfectByDate[day]=true;
-    k.stars+=1; k.lifetimeStars+=1;
-    logEvent({type:"earn",kidId,label:"Perfect day! All quests done",delta:1});
-    unlockAudio(); playFanfare(); confettiBurst();
+    awardStars(k,1,"Perfect day! All quests done",null,{undo:false});
+  } else if(!complete && k.perfectByDate[day]){
+    k.perfectByDate[day]=false;
+    k.stars-=1; k.lifetimeStars-=1;
+    logEvent({type:"earn",kidId:k.id,label:"Perfect day reversed",delta:-1});
+    checkGoal(k); checkSavings(k);
+    renderHomeBadge();
   }
 
   save(); renderKid();
@@ -934,19 +974,7 @@ function toggleDaily(kidId,questId){
 
 function earnBonus(kidId,b,ev){
   const k=kidById(kidId);
-  k.stars+=b.stars; k.lifetimeStars+=b.stars;
-  logEvent({type:"earn",kidId,label:b.label,delta:b.stars});
-  save();
-  // animation
-  if(ev) starPop(ev.clientX, ev.clientY, b.stars);
-  unlockAudio(); playPing();
-  tickBalance();
-  renderGoal(k); renderSavings(k);
-  $("#balNum") && ($("#balNum").textContent=k.stars);
-  setUndo(()=>{ k.stars-=b.stars; k.lifetimeStars-=b.stars; popLog(); save(); renderKid(); }, `+${b.stars} ⭐ for "${b.label}"`);
-  // celebrations
-  checkGoal(k); checkSavings(k);
-  renderHomeBadge();
+  awardStars(k,b.stars,b.label,ev||null,{undo:true,fanfare:false});
 }
 
 function drawJar(kidId){
@@ -957,16 +985,8 @@ function drawJar(kidId){
   showMessage("🎁 Extra Quest!", `<div class="jar-card"><span class="draw-emoji">🎁</span><b style="font-size:18px">${esc(pick)}</b><br><span class="muted">Do it to earn +2 ⭐</span></div>`, [
     {label:"Done — give +2 ⭐",cls:"btn-coral",fn:()=>{
       closeMsg();
-      k.stars+=2; k.lifetimeStars+=2;
-      logEvent({type:"earn",kidId,label:"Extra Quest: "+pick,delta:2});
-      save();
       const r=$("#kidHero").getBoundingClientRect();
-      starPop(r.left+r.width/2, r.top+40, 2);
-      playFanfare(); confettiBurst();
-      if($("#balNum")) $("#balNum").textContent=k.stars;
-      tickBalance(); renderGoal(k); renderSavings(k);
-      setUndo(()=>{ k.stars-=2; k.lifetimeStars-=2; popLog(); save(); renderKid(); }, `+2 ⭐ Extra Quest`);
-      checkGoal(k); checkSavings(k); renderHomeBadge();
+      awardStars(k,2,"Extra Quest: "+pick,{clientX:r.left+r.width/2,clientY:r.top+40},{undo:true,fanfare:true});
     }},
     {label:"Maybe later",cls:"btn-ghost",fn:closeMsg}
   ]);
@@ -977,9 +997,9 @@ function redeem(kidId,r){
   if(k.stars<r.cost) return;
   requirePin(()=>{
     k.stars-=r.cost;
-    logEvent({type:"redeem",kidId,label:r.label,delta:-r.cost});
+    const entry=logEvent({type:"redeem",kidId,label:r.label,delta:-r.cost});
     save(); renderShop(); renderHomeBadge();
-    setUndo(()=>{ k.stars+=r.cost; popLog(); save(); renderShop(); }, `Redeemed "${r.label}"`);
+    setUndo(()=>{ k.stars+=r.cost; removeLog(entry); save(); renderShop(); }, `Redeemed "${r.label}"`);
     showMessage("Enjoy! 🎉", `"${r.label}" redeemed for ${r.cost} ⭐.`, [{label:"Yay!",cls:"btn-quest",fn:closeMsg}]);
     unlockAudio(); playFanfare(); confettiBurst();
   });
@@ -990,9 +1010,9 @@ function cashout(kidId,n){
   n=Math.min(n,k.stars); if(n<1) return;
   const amount=cash(n,k);
   k.stars-=n;
-  logEvent({type:"cashout",kidId,label:`Cashed out ${n} ⭐`,delta:-n,cents:centsFor(k,n)});
+  const entry=logEvent({type:"cashout",kidId,label:`Cashed out ${n} ⭐`,delta:-n,cents:centsFor(k,n)});
   save(); renderCashout(); renderHomeBadge();
-  setUndo(()=>{ k.stars+=n; popLog(); save(); renderCashout(); }, `Cashed out ${amount}`);
+  setUndo(()=>{ k.stars+=n; removeLog(entry); save(); renderCashout(); }, `Cashed out ${amount}`);
   showMessage("Cashed out! 💵", `${n} ⭐ → <b>${amount}</b> owed on ${esc(state.settings.payDay)}.`, [{label:"Done",cls:"btn-quest",fn:closeMsg}]);
   confettiBurst();
 }
@@ -1038,8 +1058,8 @@ function checkSavings(k){
 }
 
 /* ---- log helpers ---- */
-function logEvent(ev){ ev.ts=Date.now(); state.log.unshift(ev); if(state.log.length>500) state.log.length=500; }
-function popLog(){ state.log.shift(); }
+function logEvent(ev){ ev.ts=Date.now(); state.log.unshift(ev); if(state.log.length>500) state.log.length=500; return ev; }
+function removeLog(entry){ const i=state.log.indexOf(entry); if(i>=0) state.log.splice(i,1); }
 
 /* ---- undo toast ---- */
 let undoTimer=null;
@@ -1280,12 +1300,13 @@ function renderParent(){
   // --- Backup & restore ---
   const kg=document.createElement("div"); kg.className="parent-group";
   kg.innerHTML="<h4>💾 Backup & Restore</h4><p class='muted tiny' style='margin-bottom:10px'>iOS Safari can clear saved data. Copy this backup somewhere safe (Notes, email). Paste a backup to restore.</p>";
-  const ta=document.createElement("textarea"); ta.id="backupArea"; ta.value=JSON.stringify(state);
+  const backupClone=()=>{ const c=JSON.parse(JSON.stringify(state)); if(c.settings) delete c.settings.parentPin; return JSON.stringify(c); };
+  const ta=document.createElement("textarea"); ta.id="backupArea"; ta.value=backupClone();
   ta.style.cssText="width:100%;min-height:90px;border:2px solid var(--line);border-radius:12px;padding:10px;font-size:12px;-webkit-user-select:text;user-select:text;font-family:monospace";
   kg.appendChild(ta);
   const copyBtn=btn("📋 Copy backup","btn-sky",async()=>{
-    ta.value=JSON.stringify(state);
-    try{ await navigator.clipboard.writeText(ta.value); toastQuick("Backup copied!"); }
+    const json=backupClone(); ta.value=json;
+    try{ await navigator.clipboard.writeText(json); toastQuick("Backup copied!"); }
     catch(e){ ta.select(); document.execCommand&&document.execCommand("copy"); toastQuick("Selected — press Copy"); }
   });
   const restoreBtn=btn("📥 Restore from box","btn-ghost",()=>{
@@ -1293,7 +1314,11 @@ function renderParent(){
       const obj=JSON.parse(ta.value);
       if(!obj||!obj.kids||!Array.isArray(obj.kids)) throw new Error("bad");
       showMessage("Restore backup?","This replaces all current data with the pasted backup.",[
-        {label:"Restore",cls:"btn-coral",fn:()=>{ state=obj; save(); closeMsg(); renderParent(); renderHome(); toastQuick("Restored!"); }},
+        {label:"Restore",cls:"btn-coral",fn:()=>{
+          if(!obj.settings) obj.settings={};
+          if(!obj.settings.parentPin) obj.settings.parentPin=state.settings.parentPin;
+          state=migrate(obj); save(); closeMsg(); renderParent(); renderHome(); toastQuick("Restored!");
+        }},
         {label:"Cancel",cls:"btn-ghost",fn:closeMsg}
       ]);
     }catch(e){ toastQuick("That's not a valid backup"); }
